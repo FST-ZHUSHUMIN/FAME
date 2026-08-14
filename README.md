@@ -10,3 +10,8 @@
 conda env create -f environment_full.yml
 conda activate qwen-train
 ```
+
+## Training with FAME
+```bash
+python -m qflux.main --config /FAME/configs/1_fame_config.yaml
+```
