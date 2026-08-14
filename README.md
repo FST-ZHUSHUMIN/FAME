@@ -25,7 +25,7 @@ python -m qflux.main --config /FAME/configs/1_fame_config.yaml
 python -m tests.1_fame_mask_retrain
 ```
 
-##Acknowledgments
+## Acknowledgments
 This implementation is built based on [qwen-image-finetune](https://github.com/tsiendragon/qwen-image-finetune)
 
 This study was partially supported by the Laboratory for Artificial Intelligence in Design, the InnoHK Initiative of the Innovation and Technology Commission of the Hong Kong Special Administrative Region Government.
