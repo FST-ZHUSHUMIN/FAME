@@ -5,4 +5,8 @@
 
 
 ## Environment configuration
-
+```bash
+# Create and activate conda environment
+conda env create -f environment_full.yml
+conda activate qwen-train
+```
