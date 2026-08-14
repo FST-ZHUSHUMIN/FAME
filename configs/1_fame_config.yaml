@@ -1,0 +1,119 @@
+trainer: QwenImageEdit
+# resume: "/mnt/data/zsm/qwen-finetune/project/outputs/1_qwen_lora_attentionloss_f9b1/v0/checkpoint-31-4616"
+# Model configuration
+model:
+  pretrained_model_name_or_path: "Qwen-Image-Edit"
+  quantize: False  # Set to true for quantized training
+  use_mask_injection: false  # Inject edit mask into network (不需要，因为我们用 mask prediction)
+  use_mask_prediction: false  # 启用 mask prediction head（in_dim=16，已修复）
+  mask_loss_weight: 0.1  # Mask prediction 辅助损失权重（可调整 0.05-0.2）
+  lora:
+    r: 8
+    lora_alpha: 16
+    init_lora_weights: "gaussian"
+    target_modules: ["to_k", "to_q", "to_v", "to_out.0"]
+    # 重要：不要加载旧的 checkpoint，因为 mask_prediction_head 维度已修复（3072→16）
+    # pretrained_weight: "/mnt/data/zsm/qwen-finetune/project/outputs/1_qwen_lora_attentionloss_f9b1/v0/checkpoint-31-4616/pytorch_lora_weights.safetensors"  # 留空，从头训练
+
+# Dataset configuration
+data:
+  class_path: "qflux.data.dataset.ImageDataset"
+  init_args:
+    dataset_path: "MM-AFED"  # Path to MM-AFED dataset
+    caption_dropout_rate: 0.1
+    prompt_image_dropout_rate: 0.1
+    use_edit_mask: true  # 训练时需要 ground truth mask 用于 mask prediction 监督
+    processor:
+      class_path: "qflux.data.preprocess.ImageProcessor"
+      init_args:
+        process_type: resize
+        target_size: [1440, 736]  # 原图尺寸，约1M像素
+        controls_size: [[1440, 736]]
+  batch_size: 4  # 1M像素需要更多显存，减小batch_size
+  num_workers: 2
+  shuffle: true
+
+# Training parameters
+train:
+  num_epochs: 20
+  gradient_accumulation_steps: 4
+  gradient_checkpointing: true
+  mixed_precision: "bf16"
+  max_grad_norm: 1.0
+  max_train_steps: 11540
+  checkpointing_steps: 577
+  checkpoints_total_limit: 20
+
+# Loss configuration - mask-weighted training
+loss:
+  class_path: "qflux.losses.AttentionMaskMseLoss"
+  init_args:
+    foreground_weight: 0.9   # Higher weight for edit regions
+    background_weight: 0.1    # Lower weight preserves background consistency
+    eps: 1e-12
+    reduction: "mean"
+
+
+# Optimizer configuration
+optimizer:
+  class_path: "torch.optim.AdamW"
+  init_args:
+    lr: 1e-4
+    betas: [0.9, 0.999]
+    weight_decay: 0.01
+    eps: 1e-8
+
+# Learning rate scheduler
+lr_scheduler:
+  scheduler_type: "cosine"
+  warmup_steps: 100
+
+# Cache configuration
+cache:
+  use_cache: false
+  cache_dir: "cache"
+  devices:
+    vae: "cuda:0"
+    text_encoder: "cuda:0"
+
+# Logging configuration
+logging:
+  output_dir: "outputs"  # Base directory, versions created automatically
+  report_to: "tensorboard"
+  tracker_project_name: "1_fame_mask_retrain"  # 改个新名字，表示这是 mask prediction 训练
+  log_file: "training.log"
+  log_level: "INFO"
+  console_log: true
+
+validation:
+  enabled: true        # Enable validation sampling
+  steps: 577        # Run validation every 577 steps
+  max_samples: 2       # Use up to 2 samples from validation dataset
+  seed: 42             # Fixed seed for reproducible results
+  # CFG settings for validation (与 inference 保持一致)
+  negative_prompt: " "  # Empty string enables CFG
+  true_cfg_scale: 4.0  # Guidance strength (Qwen 官方标准配置)
+  num_inference_steps: 50  # Denoising steps
+  dataset:             # Validation dataset configuration
+    class_path: qflux.data.dataset.ImageDataset
+    init_args:
+      dataset_path: "AFED-H-Product" # just 2 or 4 images from AFED-H-Product dataset or in the wild dataset for validation
+      caption_dropout_rate: 0.0
+      prompt_image_dropout_rate: 0.0
+      use_edit_mask: false  # Validation 不需要 ground truth mask（会自动预测）
+      selected_control_indexes: [0]
+      processor:
+        class_path: qflux.data.preprocess.ImageProcessor
+        init_args:
+          process_type: resize
+          resize_mode: bilinear
+          target_size: [1440, 736]  # 与训练保持一致
+          controls_size: [[1440, 736]]
+
+# Prediction/Inference configuration
+predict:
+  devices:
+    vae: cuda:0
+    text_encoder: cuda:0
+    dit: cuda:0
+
